@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <new>
 #include <sstream>
@@ -18,23 +19,34 @@
 #include <windows.h>
 #include <winuser.h>
 
+//constants
 const int DIAG_ID_STARTBUTTON = 0;
 const int DIAG_ID_LOGTEXT = 1;
 const int DIAG_ID_COMMENTBOX = 2;
 const int DIAG_ID_LOADFANOUTFW = 3;
 const int DIAG_ID_LOADCLOCKSYNTHFW = 4;
 const int DIAG_ID_EXIT = 5;
-const int DIAG_ID_WRITE_LOG = 6;
+const int DIAG_ID_WRITE_COMMENT = 6;
+const int DIAG_ID_STOPBUTTON = 7;
+
+const int TIMER_ID_CHECKFILES = 0;
 
 const int DISPLAY_LOG_LENGTH = 16;
 
+//funcion forward declarations (TODO: move to header?)
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+void update_log(std::vector<std::wstring> & display_log, std::string new_text);
+void update_log(std::vector<std::wstring> & display_log, std::wstring new_text);
+void post_string_vector_to_dialog_text(HWND hwnd, int dialog_id, std::vector<std::wstring> & display_log);
+//std::wstring convert_to_log(std::string text);
 
 struct StateInfo {
-  int counter;
+  int seu_counter;
+  bool test_is_running;
   std::vector<std::wstring> display_log;
 };
 
+//main function
 //useful tutorial: http://www.winprog.org/tutorial/
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -83,31 +95,38 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE),
       NULL);      // Pointer not needed.
 
-  //button to load firmware for test 1
-  HWND hwndFwFanoutButton = CreateWindowEx(0, L"BUTTON", 
-      L"Load FW (Fanout Test)", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 368, 192, 
-      24, hwnd, (HMENU)DIAG_ID_LOADFANOUTFW, 
-      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+  ////button to load firmware for test 1
+  //HWND hwndFwFanoutButton = CreateWindowEx(0, L"BUTTON", 
+  //    L"Set FW (Fanout Test)", 
+  //    WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 400, 192, 
+  //    24, hwnd, (HMENU)DIAG_ID_LOADFANOUTFW, 
+  //    (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
-  //button to load firmware for test 2
-  HWND hwndFwClockButton = CreateWindowEx(0, L"BUTTON", 
-      L"Load FW (Clock Chip Test)", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 368, 368, 192, 
-      24, hwnd, (HMENU)DIAG_ID_LOADCLOCKSYNTHFW, 
-      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+  ////button to load firmware for test 2
+  //HWND hwndFwClockButton = CreateWindowEx(0, L"BUTTON", 
+  //    L"Set FW (Clock Chip Test)", 
+  //    WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 368, 400, 192, 
+  //    24, hwnd, (HMENU)DIAG_ID_LOADCLOCKSYNTHFW, 
+  //    (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //button to write log
   HWND hwndWriteLogButton = CreateWindowEx(0, L"BUTTON", 
-      L"Write Log", 
+      L"Write Comment", 
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 400, 128, 
-      24, hwnd, (HMENU)DIAG_ID_WRITE_LOG, 
+      24, hwnd, (HMENU)DIAG_ID_WRITE_COMMENT, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to stop
+  HWND hwndStopButton = CreateWindowEx(0, L"BUTTON", 
+      L"Stop SEU Test", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 368, 128, 
+      24, hwnd, (HMENU)DIAG_ID_STOPBUTTON, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //button to exit
   HWND hwndExitButton = CreateWindowEx(0, L"BUTTON", 
       L"Exit", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 400, 128, 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 304, 368, 128, 
       24, hwnd, (HMENU)DIAG_ID_EXIT, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
@@ -137,11 +156,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   {
   case WM_CREATE:
     {
+      //initialize AppState data and set pointer to allow access to it
       CREATESTRUCT *pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
       StateInfo* AppState = reinterpret_cast<StateInfo*>(pCreate->lpCreateParams);
-      AppState->counter = 0;
+      AppState->seu_counter = 0;
+      AppState->test_is_running = false;
       AppState->display_log = std::vector<std::wstring>(DISPLAY_LOG_LENGTH,L"");
       SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)AppState);
+
+      //start 5s timer on which program reads directory files for Vivado output
+      //note it takes O(0.5) seconds just to find if a file exists
+      SetTimer(hwnd, TIMER_ID_CHECKFILES, 5000, (TIMERPROC)NULL);
     }
     return 0;
 
@@ -158,51 +183,147 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return 0;
 
-  case WM_COMMAND:
-    if (HIWORD(wParam) == BN_CLICKED) {
-      if (LOWORD(wParam) == DIAG_ID_STARTBUTTON) {
-        //MessageBox(NULL, L"You clicked a button!", L"Button", MB_OK);
-        //SendDlgItemMessage(hwnd, 1, 
-        LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-        StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
-        AppState->counter += 1;
-        std::wostringstream stros;
-        stros << AppState->counter;
-        SetDlgItemText(hwnd, DIAG_ID_LOGTEXT, stros.str().c_str());
-      }
-      else if (LOWORD(wParam) == DIAG_ID_LOADFANOUTFW) {
-        system("vivado -nojournal -nolog -mode batch -notrace -source load_fanout_fw.tcl");
-      }
-      else if (LOWORD(wParam) == DIAG_ID_WRITE_LOG) {
-        LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-        StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
-
-        //update log
-        for (unsigned log_idx = 0; log_idx < (DISPLAY_LOG_LENGTH-1); log_idx++) {
-          AppState->display_log[log_idx] = AppState->display_log[log_idx+1];
+  case WM_TIMER:
+    {
+      switch (wParam)
+      {
+      case TIMER_ID_CHECKFILES:
+        {
+          //check if Vivado has left us any log information
+          std::ifstream tcl_comm_file("tcl_comm_out.txt");
+          if (tcl_comm_file.good()) {
+            LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
+            std::string line;
+            while (getline(tcl_comm_file, line)) {
+              if (line.substr(0,5) == "log: ") {
+                //add info to log
+                std::string log_line = line.substr(5,line.size()-5);
+                update_log(AppState->display_log, log_line);
+              }
+            }
+            //write to box, delete communication file
+            post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            tcl_comm_file.close();
+            system("rm tcl_comm_out.txt");
+          }
         }
-        wchar_t diag_comment_text[256];
-        GetDlgItemText(hwnd, DIAG_ID_COMMENTBOX, diag_comment_text, 256);
-        std::time_t current_time = std::time(nullptr);
-        char* time_cstr = std::asctime(std::localtime(&current_time));
-        std::string time_string = (std::string(time_cstr)).substr(4,20);
-        //convert from std::string to std::wstring assuming all characters are single-byte
-        AppState->display_log[DISPLAY_LOG_LENGTH-1] = 
-            std::wstring(time_string.begin(), time_string.end()) + L": " + std::wstring(diag_comment_text);
+        break;
 
-        //write to box
-        std::wostringstream stros;
-        for (unsigned log_idx = 0; log_idx < DISPLAY_LOG_LENGTH; log_idx++) {
-          stros << AppState->display_log[log_idx] << "\n";
-        }
-        SetDlgItemText(hwnd, DIAG_ID_LOGTEXT, stros.str().c_str());
-      }
-      else if (LOWORD(wParam) == DIAG_ID_EXIT) {
-        PostQuitMessage(0);
+      default: //nothing
+        break;
       }
     }
     return 0;
 
+  case WM_COMMAND:
+    {
+      if (HIWORD(wParam) == BN_CLICKED) {
+        LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
+
+        switch (LOWORD(wParam))
+        {
+        case DIAG_ID_STARTBUTTON:
+          //MessageBox(NULL, L"You clicked a button!", L"Button", MB_OK);
+          system("start C:\\cygwin64\\bin\\python3.6m.exe dummy_python_script.py");
+          AppState->test_is_running = true;
+          //system("start vivado -nojournal -nolog -mode batch -notrace -source load_fanout_fw.tcl");
+          break;
+
+        case DIAG_ID_STOPBUTTON:
+          {
+            if (!AppState->test_is_running) {
+              //error, no running test
+              update_log(AppState->display_log, std::wstring(L"Error: user attempted to stop, but no running process"));
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+              std::ifstream tcl_comm_check_file("tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, std::wstring(L"Error: attempted to stop but previous command unresponsive"));
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                std::ofstream tcl_comm_file("tcl_comm_in.txt");
+                tcl_comm_file << "cmd: stop\n";
+                AppState->test_is_running = false;
+                tcl_comm_file.close();
+              }
+            }
+          }
+          break;
+
+        case DIAG_ID_WRITE_COMMENT:
+          {
+            wchar_t diag_comment_text[256];
+            GetDlgItemText(hwnd, DIAG_ID_COMMENTBOX, diag_comment_text, 256);
+            update_log(AppState->display_log, std::wstring(diag_comment_text));
+            post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+          }
+          break;
+        
+        case DIAG_ID_EXIT:
+          //PostQuitMessage(0);
+          DestroyWindow(hwnd);
+          break;
+
+        default: //nothing
+          break;
+        }
+      }
+    }
+    return 0;
+
+  default:
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+
   }
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+/**
+ * function to display a string vector in a dialog box
+ */
+void post_string_vector_to_dialog_text(HWND hwnd, int dialog_id, std::vector<std::wstring> & display_log) {
+  std::wostringstream stros;
+  for (unsigned log_idx = 0; log_idx < DISPLAY_LOG_LENGTH; log_idx++) {
+    stros << display_log[log_idx] << "\n";
+  }
+  SetDlgItemText(hwnd, dialog_id, stros.str().c_str());
+}
+
+/**
+ * function that updates vector display_log with new time-stampped text from new_text
+ */
+void update_log(std::vector<std::wstring> & display_log, std::string new_text) {
+  //update log with new comment
+  for (unsigned log_idx = 0; log_idx < (DISPLAY_LOG_LENGTH-1); log_idx++) {
+    display_log[log_idx] = display_log[log_idx+1];
+  }
+  std::time_t current_time = std::time(nullptr);
+  char* time_cstr = std::asctime(std::localtime(&current_time));
+  std::string time_string = (std::string(time_cstr)).substr(4,20);
+  //convert from std::string to std::wstring assuming all characters are single-byte
+  display_log[DISPLAY_LOG_LENGTH-1] = 
+      std::wstring(time_string.begin(), time_string.end()) + L": " + 
+      std::wstring(new_text.begin(), new_text.end());
+}
+
+/**
+ * function that updates vector display_log with new time-stampped text from new_text
+ */
+void update_log(std::vector<std::wstring> & display_log, std::wstring new_text) {
+  //update log with new comment
+  for (unsigned log_idx = 0; log_idx < (DISPLAY_LOG_LENGTH-1); log_idx++) {
+    display_log[log_idx] = display_log[log_idx+1];
+  }
+  wchar_t diag_comment_text[256];
+  std::time_t current_time = std::time(nullptr);
+  char* time_cstr = std::asctime(std::localtime(&current_time));
+  std::string time_string = (std::string(time_cstr)).substr(4,20);
+  //convert from std::string to std::wstring assuming all characters are single-byte
+  display_log[DISPLAY_LOG_LENGTH-1] = 
+      std::wstring(time_string.begin(), time_string.end()) + L": " + new_text;
 }
