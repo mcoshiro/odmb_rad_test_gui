@@ -50,10 +50,15 @@ proc reset_links_all {links} {
 #open HW manager and connect to KCU105
 #TODO: probably need to cofigure these properties for different machines?
 open_hw
-connect_hw_server -url localhost:3121 
-current_hw_target [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
-set_property PARAM.FREQUENCY 15000000 [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
-open_hw_target
+connect_hw_server -url localhost:3121
+
+#Higgs
+#current_hw_target [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
+#set_property PARAM.FREQUENCY 15000000 [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
+#open_hw_target
+
+#Higgsino
+open_hw_target {localhost:3121/xilinx_tcf/Xilinx/000013ca286601}
 
 
 #program board

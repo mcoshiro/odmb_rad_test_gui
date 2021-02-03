@@ -70,7 +70,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"ODMB Radiation Test Software",  // Window text
       WS_OVERLAPPEDWINDOW,              // Window style
       // Size and position
-      CW_USEDEFAULT, CW_USEDEFAULT, 592, 496,
+      CW_USEDEFAULT, CW_USEDEFAULT, 592, 512,
       NULL,       // Parent window    
       NULL,       // Menu
       hInstance,  // Instance handle
@@ -246,7 +246,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             //write to box, delete communication file
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             tcl_comm_file.close();
-            system("rm comm_files\\tcl_comm_out.txt");
+            remove("comm_files\\tcl_comm_out.txt");
           }
         }
         break;
@@ -275,11 +275,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
           }
           else {
-            system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
+            //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
+            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
             AppState->test_is_running = true;
             update_log(AppState->display_log, std::wstring(L"Starting SEU test"), AppState->log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
-            //system("start vivado -nojournal -nolog -mode batch -notrace -source load_fanout_fw.tcl");
             //Keep GUI window on top: TODO doesn't work, not important enough to fix now
             RECT win_rect;
             GetWindowRect(hwnd, &win_rect);
