@@ -29,6 +29,7 @@ const int DIAG_ID_LOADCLOCKSYNTHFW = 4;
 const int DIAG_ID_EXIT = 5;
 const int DIAG_ID_WRITE_COMMENT = 6;
 const int DIAG_ID_STOPBUTTON = 7;
+const int DIAG_ID_INJECTERROR = 8;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -69,7 +70,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"ODMB Radiation Test Software",  // Window text
       WS_OVERLAPPEDWINDOW,              // Window style
       // Size and position
-      CW_USEDEFAULT, CW_USEDEFAULT, 576, 480,
+      CW_USEDEFAULT, CW_USEDEFAULT, 592, 496,
       NULL,       // Parent window    
       NULL,       // Menu
       hInstance,  // Instance handle
@@ -117,6 +118,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"Write Comment", 
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 400, 128, 
       24, hwnd, (HMENU)DIAG_ID_WRITE_COMMENT, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to inject errors
+  HWND hwndErrorButton = CreateWindowEx(0, L"BUTTON", 
+      L"Inject Error", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 400, 128, 
+      24, hwnd, (HMENU)DIAG_ID_INJECTERROR, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //button to stop
@@ -301,6 +309,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               tcl_comm_file << "cmd: stop\n";
               AppState->test_is_running = false;
               tcl_comm_file.close();
+            }
+          }
+          break;
+
+        case DIAG_ID_INJECTERROR:
+          {
+            if (!AppState->test_is_running) {
+              //warning, no running test
+              update_log(AppState->display_log, 
+                  std::wstring(L"Error: attempting to inject error, but no known running process"), 
+                  AppState->log_file);
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+              std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, 
+                    std::wstring(L"Error: attempted to inject error but previous command unresponsive"), 
+                    AppState->log_file);
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
+                tcl_comm_file << "cmd: inject error\n";
+                tcl_comm_file.close();
+              }
             }
           }
           break;
