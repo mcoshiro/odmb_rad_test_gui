@@ -90,6 +90,10 @@ lappend prev_link_status 0
 
 after 500
 reset_links_all $links
+set cycle_counter 0
+set comm_output_file [open $output_file_name a]
+  puts $comm_output_file "log: Test started"
+close $comm_output_file
 
 #main loop- check link status and communicate with controlling GUI
 set continue_test "1"
@@ -130,12 +134,14 @@ while { $continue_test != "0" } {
       #link lost since last check
       set comm_output_file [open $output_file_name a]
         puts $comm_output_file "log: link $ilink lost"
+        puts $comm_output_file "sync: link $ilink lost"
       close $comm_output_file
       set [lindex $prev_link_status $ilink] "NO"
     } elseif { [expr $link_status != "NO"] && [expr [lindex $prev_link_status $ilink] == "NO"] } {
       #link lost since last check
       set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink recovered"
+        puts $comm_output_file "log: link $ilink connected"
+        puts $comm_output_file "sync: link $ilink connected"
       close $comm_output_file
       set [lindex $prev_link_status $ilink] "LINKED"
     }
@@ -164,6 +170,17 @@ while { $continue_test != "0" } {
   
   after 3000
   #continue to next loop after 3s
+  set cycle_counter [expr {[expr {$cycle_counter + 1}] % 4}]
+  if {$cycle_counter == 3} {
+    set comm_output_file [open $output_file_name a]
+      puts $comm_output_file "sync: test in progress"
+    close $comm_output_file
+  }
 }
+
+set comm_output_file [open $output_file_name a]
+  puts $comm_output_file "log: Test stopped"
+  puts $comm_output_file "sync: test stopped"
+close $comm_output_file
 
 close_hw

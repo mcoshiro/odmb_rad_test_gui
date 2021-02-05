@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <windows.h>
+#include <wingdi.h>
 #include <winuser.h>
 
 //constants
@@ -30,6 +31,8 @@ const int DIAG_ID_EXIT = 5;
 const int DIAG_ID_WRITE_COMMENT = 6;
 const int DIAG_ID_STOPBUTTON = 7;
 const int DIAG_ID_INJECTERROR = 8;
+const int DIAG_ID_LINK1TEXT = 9;
+const int DIAG_ID_LINK2TEXT = 10;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -43,8 +46,18 @@ void post_string_vector_to_dialog_text(HWND hwnd, int dialog_id, std::vector<std
 std::string asctime_to_filetime(std::string asctime);
 //std::wstring convert_to_log(std::string text);
 
+enum class LinkStatus {
+  test_stopped,
+  link_connected,
+  link_broken,
+  communication_lost
+};
+
 struct StateInfo {
+  LinkStatus link_one;
+  LinkStatus link_two;
   int seu_counter;
+  int cycles_since_comm_counter;
   bool test_is_running;
   std::vector<std::wstring> display_log;
   std::ofstream *log_file;
@@ -70,7 +83,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"ODMB Radiation Test Software",  // Window text
       WS_OVERLAPPEDWINDOW,              // Window style
       // Size and position
-      CW_USEDEFAULT, CW_USEDEFAULT, 592, 512,
+      CW_USEDEFAULT, CW_USEDEFAULT, 624, 512,
       NULL,       // Parent window    
       NULL,       // Menu
       hInstance,  // Instance handle
@@ -146,9 +159,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       WS_CHILD | WS_VISIBLE, 16, 432, 544, 32, hwnd, (HMENU)DIAG_ID_COMMENTBOX, 
       NULL, NULL);
 
+  //link box 1
+  HWND hwndLinkOneBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
+      WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TEXT, 
+      NULL, NULL);
+
+  //link box 2
+  HWND hwndLinkTwoBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
+      WS_CHILD | WS_VISIBLE, 448, 400, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
+      NULL, NULL);
+
   //text
   HWND hwndLogText = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 
-      16, 16, 544, 336, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
+      16, 16, 576, 336, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
 
   // Run the message loop.
   MSG msg = { };
@@ -163,6 +186,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+
+  static HBRUSH link_one_bkgd;
+  static HBRUSH link_two_bkgd;
+
   switch (uMsg)
   {
   case WM_CREATE:
@@ -171,13 +198,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       CREATESTRUCT *pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
       StateInfo* AppState = reinterpret_cast<StateInfo*>(pCreate->lpCreateParams);
       AppState->seu_counter = 0;
+      AppState->cycles_since_comm_counter = 0;
       AppState->test_is_running = false;
+      AppState->link_one = LinkStatus::test_stopped;
+      AppState->link_two = LinkStatus::test_stopped;
       AppState->display_log = std::vector<std::wstring>(DISPLAY_LOG_LENGTH,L"");
       std::time_t current_time = std::time(nullptr);
       char* time_cstr = std::asctime(std::localtime(&current_time));
       std::string time_string = asctime_to_filetime(std::string(time_cstr));
       AppState->log_file = new std::ofstream(("logs\\radtest_"+time_string+".log").c_str());
       SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)AppState);
+
+      //initialize static variables in WindowProc
+      link_one_bkgd = CreateSolidBrush(RGB(160,160,160));
+      link_two_bkgd = CreateSolidBrush(RGB(160,160,160));
 
       //delete any comm files left over from previous runs
       std::ifstream tcl_comm_file("comm_files\\tcl_comm_out.txt");
@@ -211,6 +245,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       //close log file
       AppState->log_file->close();
       delete AppState->log_file;
+      DeleteObject( link_one_bkgd );
+      DeleteObject( link_two_bkgd );
       PostQuitMessage(0);
     }
     return 0;
@@ -224,29 +260,149 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
     return 0;
 
+  case WM_CTLCOLORSTATIC:
+    {
+      LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+      StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
+      HDC hdcStatic = reinterpret_cast<HDC>(wParam);
+
+      int dialog_id = GetDlgCtrlID(reinterpret_cast<HWND>(lParam));
+
+      if (dialog_id == DIAG_ID_LINK1TEXT) {
+        switch (AppState->link_one) 
+        {
+        case LinkStatus::link_connected:
+          SetBkColor(hdcStatic, RGB(51,255,51));
+          break;
+
+        case LinkStatus::link_broken:
+          SetBkColor(hdcStatic, RGB(255,51,51));
+          break;
+
+        case LinkStatus::communication_lost:
+          SetBkColor(hdcStatic, RGB(255,153,51));
+          break;
+
+        default:
+          //test stopped
+          SetBkColor(hdcStatic, RGB(160,160,160));
+        }
+      }
+      else if (dialog_id == DIAG_ID_LINK2TEXT) {
+        switch (AppState->link_two) 
+        {
+        case LinkStatus::link_connected:
+          SetBkColor(hdcStatic, RGB(51,255,51));
+          break;
+
+        case LinkStatus::link_broken:
+          SetBkColor(hdcStatic, RGB(255,51,51));
+          break;
+
+        case LinkStatus::communication_lost:
+          SetBkColor(hdcStatic, RGB(255,153,51));
+          break;
+
+        default:
+          //test stopped
+          SetBkColor(hdcStatic, RGB(160,160,160));
+        }
+      }
+
+      if (dialog_id == DIAG_ID_LINK1TEXT) {
+        return (INT_PTR)link_one_bkgd;
+      }
+      else if (dialog_id == DIAG_ID_LINK2TEXT) {
+        return (INT_PTR)link_two_bkgd;
+      }
+    }
+    return 0;
+
   case WM_TIMER:
     {
       switch (wParam)
       {
       case TIMER_ID_CHECKFILES:
         {
+          LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+          StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
           //check if Vivado has left us any log information
           std::ifstream tcl_comm_file("comm_files\\tcl_comm_out.txt");
           if (tcl_comm_file.good()) {
-            LONG_PTR AppStateLongPtr = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-            StateInfo* AppState = reinterpret_cast<StateInfo*>(AppStateLongPtr);
+            AppState->cycles_since_comm_counter = 0;
             std::string line;
             while (getline(tcl_comm_file, line)) {
-              if (line.substr(0,5) == "log: ") {
-                //add info to log
-                std::string log_line = line.substr(5,line.size()-5);
-                update_log(AppState->display_log, log_line, AppState->log_file);
+              if (line.size() >= 5) {
+                if (line.substr(0,5) == "log: ") {
+                  //add info to log
+                  std::string log_line = line.substr(5,line.size()-5);
+                  update_log(AppState->display_log, log_line, AppState->log_file);
+                }
+              }
+              if (line.size() >= 18) {
+                if (line.substr(0,18) == "sync: test stopped") {
+                  AppState->test_is_running = false;
+                  AppState->link_one = LinkStatus::test_stopped;
+                  AppState->link_two = LinkStatus::test_stopped;
+                  DeleteObject( link_one_bkgd );
+                  DeleteObject( link_two_bkgd );
+                  link_one_bkgd = CreateSolidBrush(RGB(160,160,160));
+                  link_two_bkgd = CreateSolidBrush(RGB(160,160,160));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Test Stopped");
+                }
+              }
+              if (line.size() >= 19) {
+                if (line.substr(0,19) == "sync: link 1 broken") {
+                  AppState->link_one = LinkStatus::link_broken;
+                  DeleteObject( link_one_bkgd );
+                  link_one_bkgd = CreateSolidBrush(RGB(255,51,51));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Link Broken");
+                }
+              }
+              if (line.size() >= 22) {
+                if (line.substr(0,22) == "sync: link 1 connected") {
+                  AppState->link_one = LinkStatus::link_connected;
+                  DeleteObject( link_one_bkgd );
+                  link_one_bkgd = CreateSolidBrush(RGB(51,255,51));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Link Connected");
+                }
+              }
+              if (line.size() >= 19) {
+                if (line.substr(0,19) == "sync: link 2 broken") {
+                  AppState->link_two = LinkStatus::link_broken;
+                  DeleteObject( link_two_bkgd );
+                  link_two_bkgd = CreateSolidBrush(RGB(255,51,51));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Link Broken");
+                }
+              }
+              if (line.size() >= 22) {
+                if (line.substr(0,22) == "sync: link 2 connected") {
+                  AppState->link_two = LinkStatus::link_connected;
+                  DeleteObject( link_two_bkgd );
+                  link_two_bkgd = CreateSolidBrush(RGB(51,255,51));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Link Connected");
+                }
               }
             }
             //write to box, delete communication file
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             tcl_comm_file.close();
             remove("comm_files\\tcl_comm_out.txt");
+          }
+          else if (AppState->test_is_running == true) {
+            AppState->cycles_since_comm_counter += 1;
+          }
+          if (AppState->cycles_since_comm_counter == 4) {
+            //set link status to communication lost after 20 s
+            AppState->link_one = LinkStatus::communication_lost;
+            AppState->link_two = LinkStatus::communication_lost;
+            DeleteObject( link_one_bkgd );
+            DeleteObject( link_two_bkgd );
+            link_one_bkgd = CreateSolidBrush(RGB(255,153,51));
+            link_two_bkgd = CreateSolidBrush(RGB(255,153,51));
+            SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Communication Lost");
+            SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Communication Lost");
           }
         }
         break;
@@ -275,10 +431,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
           }
           else {
-            //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
-            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
+            system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
+            //system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
             AppState->test_is_running = true;
-            update_log(AppState->display_log, std::wstring(L"Starting SEU test"), AppState->log_file);
+            update_log(AppState->display_log, std::wstring(L"Initiating SEU test"), AppState->log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             //Keep GUI window on top: TODO doesn't work, not important enough to fix now
             RECT win_rect;
@@ -307,7 +463,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             else {
               std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
               tcl_comm_file << "cmd: stop\n";
-              AppState->test_is_running = false;
               tcl_comm_file.close();
             }
           }
