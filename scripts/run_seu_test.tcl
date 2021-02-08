@@ -82,24 +82,25 @@ set prev_link_status [list]
 set link [create_hw_sio_link [lindex $all_txs 1] [lindex $all_rxs 2]]
 lappend links [lindex [get_hw_sio_links $link] 0]
 lappend seu_counters 0
-lappend prev_link_status 0
+lappend prev_link_status "UNKNOWN"
 set link [create_hw_sio_link [lindex $all_txs 2] [lindex $all_rxs 1]]
 lappend links [lindex [get_hw_sio_links $link] 0]
 lappend seu_counters 0
-lappend prev_link_status 0
+lappend prev_link_status "UNKNOWN"
 
 after 500
 reset_links_all $links
 set cycle_counter 0
 set comm_output_file [open $output_file_name a]
   puts $comm_output_file "log: Test started"
+  puts $comm_output_file "sync: test started"
 close $comm_output_file
 
 #main loop- check link status and communicate with controlling GUI
 set continue_test "1"
 while { $continue_test != "0" } {
   #print 
-  puts "SEU test in progress"
+  puts "DEBUG: SEU test in progress"
 
   #check status on the various links
   set nlinks [llength $links]
@@ -119,7 +120,7 @@ while { $continue_test != "0" } {
     if { $formatted_err_count == "" } {
       set formatted_err_count "0"
     }
-    puts "DEBUG: previously $seu_counter errors, now $formatted_err_count"
+    #puts "DEBUG: previously $seu_counter errors, now $formatted_err_count"
     if { $formatted_err_count > $seu_counter } {
       #new SEU since last check
       puts "SEU detected"
@@ -130,20 +131,20 @@ while { $continue_test != "0" } {
     }
 
     #write log if link broken or recovered
-    if { [expr $link_status == "NO"] && [expr [lindex $prev_link_status $ilink] != "NO"] } {
+    if { [expr {$link_status == "NO"}] && [expr {[lindex $prev_link_status $ilink] != "NO"}] } {
       #link lost since last check
       set comm_output_file [open $output_file_name a]
         puts $comm_output_file "log: link $ilink lost"
         puts $comm_output_file "sync: link $ilink lost"
       close $comm_output_file
-      set [lindex $prev_link_status $ilink] "NO"
-    } elseif { [expr $link_status != "NO"] && [expr [lindex $prev_link_status $ilink] == "NO"] } {
-      #link lost since last check
+      lset prev_link_status $ilink "NO"
+    } elseif { [expr {$link_status != "NO"}] && [expr {[lindex $prev_link_status $ilink] != "LINKED"}] } {
+      #link connected since last check
       set comm_output_file [open $output_file_name a]
         puts $comm_output_file "log: link $ilink connected"
         puts $comm_output_file "sync: link $ilink connected"
       close $comm_output_file
-      set [lindex $prev_link_status $ilink] "LINKED"
+      lset prev_link_status $ilink "LINKED"
     }
   }
 

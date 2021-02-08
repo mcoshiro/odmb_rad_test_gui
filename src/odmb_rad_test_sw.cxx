@@ -58,6 +58,7 @@ struct StateInfo {
   LinkStatus link_two;
   int seu_counter;
   int cycles_since_comm_counter;
+  bool test_is_initiated;
   bool test_is_running;
   std::vector<std::wstring> display_log;
   std::ofstream *log_file;
@@ -199,6 +200,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       StateInfo* AppState = reinterpret_cast<StateInfo*>(pCreate->lpCreateParams);
       AppState->seu_counter = 0;
       AppState->cycles_since_comm_counter = 0;
+      AppState->test_is_initiated = false;
       AppState->test_is_running = false;
       AppState->link_one = LinkStatus::test_stopped;
       AppState->link_two = LinkStatus::test_stopped;
@@ -340,6 +342,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
               }
               if (line.size() >= 18) {
+                if (line.substr(0,18) == "sync: test started") {
+                  AppState->test_is_running = true;
+                }
+              }
+              if (line.size() >= 18) {
                 if (line.substr(0,18) == "sync: test stopped") {
                   AppState->test_is_running = false;
                   AppState->link_one = LinkStatus::test_stopped;
@@ -353,7 +360,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
               }
               if (line.size() >= 19) {
-                if (line.substr(0,19) == "sync: link 1 broken") {
+                if (line.substr(0,19) == "sync: link 0 broken") {
                   AppState->link_one = LinkStatus::link_broken;
                   DeleteObject( link_one_bkgd );
                   link_one_bkgd = CreateSolidBrush(RGB(255,51,51));
@@ -361,7 +368,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
               }
               if (line.size() >= 22) {
-                if (line.substr(0,22) == "sync: link 1 connected") {
+                if (line.substr(0,22) == "sync: link 0 connected") {
                   AppState->link_one = LinkStatus::link_connected;
                   DeleteObject( link_one_bkgd );
                   link_one_bkgd = CreateSolidBrush(RGB(51,255,51));
@@ -369,7 +376,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
               }
               if (line.size() >= 19) {
-                if (line.substr(0,19) == "sync: link 2 broken") {
+                if (line.substr(0,19) == "sync: link 1 broken") {
                   AppState->link_two = LinkStatus::link_broken;
                   DeleteObject( link_two_bkgd );
                   link_two_bkgd = CreateSolidBrush(RGB(255,51,51));
@@ -377,7 +384,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
               }
               if (line.size() >= 22) {
-                if (line.substr(0,22) == "sync: link 2 connected") {
+                if (line.substr(0,22) == "sync: link 1 connected") {
                   AppState->link_two = LinkStatus::link_connected;
                   DeleteObject( link_two_bkgd );
                   link_two_bkgd = CreateSolidBrush(RGB(51,255,51));
@@ -423,17 +430,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
         case DIAG_ID_STARTBUTTON:
           //MessageBox(NULL, L"You clicked a button!", L"Button", MB_OK);
-          if (AppState->test_is_running) {
+          if (AppState->test_is_initiated) {
             //warning, test already running
             update_log(AppState->display_log, 
-                std::wstring(L"Error: cannot start test since test already in progress"), 
+                std::wstring(L"Error: cannot start test since test already initiated"), 
                 AppState->log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
           }
           else {
-            system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
-            //system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
-            AppState->test_is_running = true;
+            //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
+            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
+            AppState->test_is_initiated = true;
             update_log(AppState->display_log, std::wstring(L"Initiating SEU test"), AppState->log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             //Keep GUI window on top: TODO doesn't work, not important enough to fix now
@@ -465,6 +472,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               tcl_comm_file << "cmd: stop\n";
               tcl_comm_file.close();
             }
+            AppState->test_is_initiated = false;
           }
           break;
 

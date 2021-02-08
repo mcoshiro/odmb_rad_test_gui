@@ -5,8 +5,9 @@ if  __name__ == '__main__':
   time.sleep(10)
   tcl_comm_out_file = open('comm_files\\tcl_comm_out.txt','a')
   tcl_comm_out_file.write('log: Test started\n')
+  tcl_comm_out_file.write('sync: test started\n')
+  tcl_comm_out_file.write('sync: link 0 connected\n')
   tcl_comm_out_file.write('sync: link 1 connected\n')
-  tcl_comm_out_file.write('sync: link 2 connected\n')
   tcl_comm_out_file.close()
 
   continue_running = True
