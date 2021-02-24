@@ -33,6 +33,8 @@ const int DIAG_ID_STOPBUTTON = 7;
 const int DIAG_ID_INJECTERROR = 8;
 const int DIAG_ID_LINK1TEXT = 9;
 const int DIAG_ID_LINK2TEXT = 10;
+const int DIAG_ID_RESETLINKS = 11;
+const int DIAG_ID_RESETSEU = 12;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -105,7 +107,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"Start SEU Test",   // Button text
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,  // Styles
       16,         // x position
-      368,         // y position
+      336,         // y position
       128,         // Button width
       24,         // Button height
       hwnd,       // Parent window
@@ -127,32 +129,50 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
   //    24, hwnd, (HMENU)DIAG_ID_LOADCLOCKSYNTHFW, 
   //    (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
-  //button to write log
-  HWND hwndWriteLogButton = CreateWindowEx(0, L"BUTTON", 
-      L"Write Comment", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 400, 128, 
-      24, hwnd, (HMENU)DIAG_ID_WRITE_COMMENT, 
-      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
-
-  //button to inject errors
-  HWND hwndErrorButton = CreateWindowEx(0, L"BUTTON", 
-      L"Inject Error", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 400, 128, 
-      24, hwnd, (HMENU)DIAG_ID_INJECTERROR, 
-      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+  //text
+  HWND hwndLogText = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 
+      16, 16, 544, 304, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
 
   //button to stop
   HWND hwndStopButton = CreateWindowEx(0, L"BUTTON", 
       L"Stop SEU Test", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 368, 128, 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 336, 128, 
       24, hwnd, (HMENU)DIAG_ID_STOPBUTTON, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //button to exit
   HWND hwndExitButton = CreateWindowEx(0, L"BUTTON", 
       L"Exit", 
-      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 304, 368, 128, 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 304, 336, 128, 
       24, hwnd, (HMENU)DIAG_ID_EXIT, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to write log
+  HWND hwndWriteLogButton = CreateWindowEx(0, L"BUTTON", 
+      L"Write Comment", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 368, 128, 
+      24, hwnd, (HMENU)DIAG_ID_WRITE_COMMENT, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to inject errors
+  HWND hwndErrorButton = CreateWindowEx(0, L"BUTTON", 
+      L"Inject Error", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 368, 128, 
+      24, hwnd, (HMENU)DIAG_ID_INJECTERROR, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to reset links
+  HWND hwndResetButton = CreateWindowEx(0, L"BUTTON", 
+      L"Reset Links", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 304, 368, 128, 
+      24, hwnd, (HMENU)DIAG_ID_RESETLINKS, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to reset SEU counter
+  HWND hwndResetSEUButton = CreateWindowEx(0, L"BUTTON", 
+      L"Reset SEUs", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 400, 128, 
+      24, hwnd, (HMENU)DIAG_ID_RESETSEU, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //text box
@@ -162,17 +182,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
   //link box 1
   HWND hwndLinkOneBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
-      WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TEXT, 
+      WS_CHILD | WS_VISIBLE, 448, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TEXT, 
       NULL, NULL);
 
   //link box 2
   HWND hwndLinkTwoBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
-      WS_CHILD | WS_VISIBLE, 448, 400, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
+      WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
       NULL, NULL);
-
-  //text
-  HWND hwndLogText = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 
-      16, 16, 576, 336, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
 
   // Run the message loop.
   MSG msg = { };
@@ -438,8 +454,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
           }
           else {
-            //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py");
-            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl");
+            //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py && exit");
+            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl && exit");
             AppState->test_is_initiated = true;
             update_log(AppState->display_log, std::wstring(L"Initiating SEU test"), AppState->log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
@@ -497,6 +513,66 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               else {
                 std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
                 tcl_comm_file << "cmd: inject error\n";
+                tcl_comm_file.close();
+              }
+            }
+          }
+          break;
+
+        case DIAG_ID_RESETLINKS:
+          {
+            if (!AppState->test_is_running) {
+              //warning, no running test
+              update_log(AppState->display_log, 
+                  std::wstring(L"Error: no running process to reset links"), 
+                  AppState->log_file);
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+            std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, 
+                    std::wstring(L"Error: attempted to reset links but previous command unresponsive"), 
+                    AppState->log_file);
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                update_log(AppState->display_log, 
+                    std::wstring(L"User reset links"), 
+                    AppState->log_file);
+                std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
+                tcl_comm_file << "cmd: reset links\n";
+                tcl_comm_file.close();
+              }
+            }
+          }
+          break;
+
+        case DIAG_ID_RESETSEU:
+          {
+            if (!AppState->test_is_running) {
+              //warning, no running test
+              update_log(AppState->display_log, 
+                  std::wstring(L"Error: no running process to reset SEUs"), 
+                  AppState->log_file);
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+            std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, 
+                    std::wstring(L"Error: attempted to reset SEUs but previous command unresponsive"), 
+                    AppState->log_file);
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                update_log(AppState->display_log, 
+                    std::wstring(L"User reset SEUs"), 
+                    AppState->log_file);
+                std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
+                tcl_comm_file << "cmd: reset seus\n";
                 tcl_comm_file.close();
               }
             }

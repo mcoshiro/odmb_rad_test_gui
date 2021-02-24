@@ -50,15 +50,15 @@ proc reset_links_all {links} {
 #open HW manager and connect to KCU105
 #TODO: probably need to cofigure these properties for different machines?
 open_hw
-connect_hw_server -url localhost:3121
+connect_hw_server -url localhost:3121 -allow_non_jtag
 
-#Higgs
-#current_hw_target [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
-#set_property PARAM.FREQUENCY 15000000 [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
-#open_hw_target
+#uUSB cable
+current_hw_target [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
+set_property PARAM.FREQUENCY 15000000 [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
+open_hw_target
 
-#Higgsino
-open_hw_target {localhost:3121/xilinx_tcf/Xilinx/000013ca286601}
+#Red Box
+#open_hw_target {localhost:3121/xilinx_tcf/Xilinx/000013ca286601}
 
 
 #program board
@@ -79,11 +79,11 @@ set links [list]
 set seu_counters [list]
 set prev_link_status [list]
 
-set link [create_hw_sio_link [lindex $all_txs 1] [lindex $all_rxs 2]]
+set link [create_hw_sio_link [lindex $all_txs 1] [lindex $all_rxs 1]]
 lappend links [lindex [get_hw_sio_links $link] 0]
 lappend seu_counters 0
 lappend prev_link_status "UNKNOWN"
-set link [create_hw_sio_link [lindex $all_txs 2] [lindex $all_rxs 1]]
+set link [create_hw_sio_link [lindex $all_txs 4] [lindex $all_rxs 4]]
 lappend links [lindex [get_hw_sio_links $link] 0]
 lappend seu_counters 0
 lappend prev_link_status "UNKNOWN"
@@ -131,11 +131,12 @@ while { $continue_test != "0" } {
     }
 
     #write log if link broken or recovered
+    puts "DEBUG: link $ilink status: $link_status"
     if { [expr {$link_status == "NO"}] && [expr {[lindex $prev_link_status $ilink] != "NO"}] } {
       #link lost since last check
       set comm_output_file [open $output_file_name a]
         puts $comm_output_file "log: link $ilink lost"
-        puts $comm_output_file "sync: link $ilink lost"
+        puts $comm_output_file "sync: link $ilink broken"
       close $comm_output_file
       lset prev_link_status $ilink "NO"
     } elseif { [expr {$link_status != "NO"}] && [expr {[lindex $prev_link_status $ilink] != "LINKED"}] } {
@@ -146,6 +147,19 @@ while { $continue_test != "0" } {
       close $comm_output_file
       lset prev_link_status $ilink "LINKED"
     }
+
+    #if link is broken, try to reset TX/RX
+    if { [expr {$link_status == "NO"}] } {
+      puts "DEBUG: Attemptign to reset TX/RX"
+      set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+      set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+      commit_hw_sio [get_hw_sio_links $link]
+      after 200
+      set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+      set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+      commit_hw_sio [get_hw_sio_links $link]
+    }
+  #end loop over links
   }
 
   #check for communication from GUI
@@ -163,6 +177,27 @@ while { $continue_test != "0" } {
         after 200
         set_property LOGIC.ERR_INJECT_CTRL 0 [get_hw_sio_links $links]
         commit_hw_sio [get_hw_sio_links $links]
+      } elseif { $input_data == "cmd: reset links" } {
+        puts "Resetting links"
+        set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $links]
+        set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $links]
+        commit_hw_sio [get_hw_sio_links $links]
+        after 200
+        set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $links]
+        set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $links]
+        commit_hw_sio [get_hw_sio_links $links]
+      } elseif { $input_data == "cmd: reset seus" } {
+        puts "Resetting SEUs"
+        set_property LOGIC.MGT_ERRCNT_RESET_CTRL 1 [get_hw_sio_links $links]
+        commit_hw_sio [get_hw_sio_links $links]
+        after 200
+        set_property LOGIC.MGT_ERRCNT_RESET_CTRL 0 [get_hw_sio_links $links]
+        commit_hw_sio [get_hw_sio_links $links]
+        #reset script SEU counters
+        set nlinks [llength $links]
+        for {set ilink 0} {$ilink < $nlinks} {incr ilink} {
+          lset seu_counters $ilink 0
+        }
       }
     }
     close $comm_input_file
@@ -185,3 +220,19 @@ set comm_output_file [open $output_file_name a]
 close $comm_output_file
 
 close_hw
+
+#TX/RX reset commands: 
+#set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#
+#reset SEU commands
+#set_property LOGIC.MGT_ERRCNT_RESET_CTRL 1 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#set_property LOGIC.MGT_ERRCNT_RESET_CTRL 0 [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
+#commit_hw_sio [get_hw_sio_links {localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/TX->localhost:3121/xilinx_tcf/Digilent/210308AB0E6E/0_1_0_0/IBERT/Quad_226/MGT_X0Y9/RX}]
