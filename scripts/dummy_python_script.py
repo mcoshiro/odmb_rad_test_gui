@@ -32,5 +32,12 @@ if  __name__ == '__main__':
           tcl_comm_out_file.write('sync: test stopped\n')
           tcl_comm_out_file.close()
           continue_running = False
+        elif line == 'cmd: inject error':
+          tcl_comm_out_file = open('comm_files\\tcl_comm_out.txt','a')
+          tcl_comm_out_file.write('log: link 0 now has 2 SEUs\n')
+          tcl_comm_out_file.write('sync: link 0 SEU count 2\n')
+          tcl_comm_out_file.write('log: link 1 now has 2 SEUs\n')
+          tcl_comm_out_file.write('sync: link 1 SEU count 2\n')
+          tcl_comm_out_file.close()
       
     time.sleep(3)

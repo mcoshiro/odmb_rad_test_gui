@@ -35,6 +35,8 @@ const int DIAG_ID_LINK1TEXT = 9;
 const int DIAG_ID_LINK2TEXT = 10;
 const int DIAG_ID_RESETLINKS = 11;
 const int DIAG_ID_RESETSEU = 12;
+const int DIAG_ID_LINK1SEU = 13;
+const int DIAG_ID_LINK2SEU = 14;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -58,7 +60,8 @@ enum class LinkStatus {
 struct StateInfo {
   LinkStatus link_one;
   LinkStatus link_two;
-  int seu_counter;
+  int link1_seu_counter;
+  int link2_seu_counter;
   int cycles_since_comm_counter;
   bool test_is_initiated;
   bool test_is_running;
@@ -86,7 +89,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"ODMB Radiation Test Software",  // Window text
       WS_OVERLAPPEDWINDOW,              // Window style
       // Size and position
-      CW_USEDEFAULT, CW_USEDEFAULT, 624, 512,
+      CW_USEDEFAULT, CW_USEDEFAULT, 784, 512,
       NULL,       // Parent window    
       NULL,       // Menu
       hInstance,  // Instance handle
@@ -131,7 +134,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
   //text
   HWND hwndLogText = CreateWindowEx(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 
-      16, 16, 544, 304, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
+      16, 16, 720, 304, hwnd, (HMENU)DIAG_ID_LOGTEXT, NULL, NULL);
 
   //button to stop
   HWND hwndStopButton = CreateWindowEx(0, L"BUTTON", 
@@ -177,7 +180,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
   //text box
   HWND hwndCommentBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"",
-      WS_CHILD | WS_VISIBLE, 16, 432, 544, 32, hwnd, (HMENU)DIAG_ID_COMMENTBOX, 
+      WS_CHILD | WS_VISIBLE, 16, 432, 720, 32, hwnd, (HMENU)DIAG_ID_COMMENTBOX, 
       NULL, NULL);
 
   //link box 1
@@ -188,6 +191,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
   //link box 2
   HWND hwndLinkTwoBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
       WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
+      NULL, NULL);
+
+  //SEU box 1
+  HWND hwndLinkOneSeuBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 SEUs",
+      WS_CHILD | WS_VISIBLE, 608, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1SEU, 
+      NULL, NULL);
+
+  //SEU box 2
+  HWND hwndLinkTwoSeuBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 SEUs",
+      WS_CHILD | WS_VISIBLE, 608, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2SEU, 
       NULL, NULL);
 
   // Run the message loop.
@@ -214,7 +227,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       //initialize AppState data and set pointer to allow access to it
       CREATESTRUCT *pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
       StateInfo* AppState = reinterpret_cast<StateInfo*>(pCreate->lpCreateParams);
-      AppState->seu_counter = 0;
+      AppState->link1_seu_counter = 0;
+      AppState->link2_seu_counter = 0;
       AppState->cycles_since_comm_counter = 0;
       AppState->test_is_initiated = false;
       AppState->test_is_running = false;
@@ -407,6 +421,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                   SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Link Connected");
                 }
               }
+              if (line.size() >= 22) {
+                if (line.substr(0,22) == "sync: link 0 SEU count") {
+                  std::string str_seu_count = line.substr(22,line.size()) + " SEUs";
+                  std::wstring wstr_seu_count = std::wstring(str_seu_count.begin(), str_seu_count.end());
+                  std::wostringstream stros;
+                  stros << wstr_seu_count;
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1SEU, stros.str().c_str());
+                }
+              }
+              if (line.size() >= 22) {
+                if (line.substr(0,22) == "sync: link 1 SEU count") {
+                  std::string str_seu_count = line.substr(22,line.size()) + " SEUs";
+                  std::wstring wstr_seu_count = std::wstring(str_seu_count.begin(), str_seu_count.end());
+                  std::wostringstream stros;
+                  stros << wstr_seu_count;
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2SEU, stros.str().c_str());
+                }
+              }
             }
             //write to box, delete communication file
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
@@ -463,6 +495,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             RECT win_rect;
             GetWindowRect(hwnd, &win_rect);
             SetWindowPos(hwnd, HWND_TOP, win_rect.left, win_rect.top, 576, 480, SWP_NOSIZE);
+            //reset SEU counters
+            SetDlgItemText(hwnd, DIAG_ID_LINK1SEU, L"0 SEUs");
+            SetDlgItemText(hwnd, DIAG_ID_LINK2SEU, L"0 SEUs");
           }
           break;
 
@@ -574,6 +609,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
                 tcl_comm_file << "cmd: reset seus\n";
                 tcl_comm_file.close();
+                SetDlgItemText(hwnd, DIAG_ID_LINK1SEU, L"0 SEUs");
+                SetDlgItemText(hwnd, DIAG_ID_LINK2SEU, L"0 SEUs");
               }
             }
           }

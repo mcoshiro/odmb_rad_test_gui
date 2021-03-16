@@ -124,8 +124,10 @@ while { $continue_test != "0" } {
     if { $formatted_err_count > $seu_counter } {
       #new SEU since last check
       puts "SEU detected"
+      scan $formatted_err_count %x err_count_decimal
       set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink now has $formatted_err_count SEUs"
+        puts $comm_output_file "log: link $ilink now has $err_count_decimal SEUs"
+        puts $comm_output_file "sync: link $ilink SEU count $err_count_decimal"
       close $comm_output_file
       lset seu_counters $ilink $formatted_err_count
     }
@@ -148,17 +150,18 @@ while { $continue_test != "0" } {
       lset prev_link_status $ilink "LINKED"
     }
 
+    #Do not auto-recover
     #if link is broken, try to reset TX/RX
-    if { [expr {$link_status == "NO"}] } {
-      puts "DEBUG: Attemptign to reset TX/RX"
-      set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $link]
-      set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $link]
-      commit_hw_sio [get_hw_sio_links $link]
-      after 200
-      set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $link]
-      set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $link]
-      commit_hw_sio [get_hw_sio_links $link]
-    }
+    #if { [expr {$link_status == "NO"}] } {
+    #  puts "DEBUG: Attemptign to reset TX/RX"
+    #  set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+    #  set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+    #  commit_hw_sio [get_hw_sio_links $link]
+    #  after 200
+    #  set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+    #  set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+    #  commit_hw_sio [get_hw_sio_links $link]
+    #}
   #end loop over links
   }
 
