@@ -52,9 +52,13 @@ proc reset_links_all {links} {
 open_hw
 connect_hw_server -url localhost:3121 -allow_non_jtag
 
-#uUSB cable
-current_hw_target [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
-set_property PARAM.FREQUENCY 15000000 [get_hw_targets */xilinx_tcf/Digilent/210308AB0E6E]
+#find the first KU device connected
+set hw_target [get_hw_targets */xilinx_tcf/Digilent/210308*]
+if { [llength $hw_target] > 1 } {
+  set hw_target [ lindex [get_hw_targets */xilinx_tcf/Digilent/210308*] 0]
+}
+current_hw_target $hw_target
+set_property PARAM.FREQUENCY 15000000 $hw_target
 open_hw_target
 
 #Red Box
@@ -69,11 +73,15 @@ current_hw_device [get_hw_devices xcku040_0]
 program_hw_devices [get_hw_devices xcku040_0]
 refresh_hw_device [lindex [get_hw_devices xcku040_0] 0]
 
+set debug_mode 0
 
+puts "establishing links"
 #establish links
 #firmware-specific: create links based on how loopbacks are connected
 set all_txs [get_hw_sio_txs]
 set all_rxs [get_hw_sio_rxs]
+
+set gt_commons [get_hw_sio_commons]
 
 set links [list]
 set seu_counters [list]
@@ -87,6 +95,7 @@ set link [create_hw_sio_link [lindex $all_txs 4] [lindex $all_rxs 4]]
 lappend links [lindex [get_hw_sio_links $link] 0]
 lappend seu_counters 0
 lappend prev_link_status "UNKNOWN"
+puts "links established"
 
 after 500
 reset_links_all $links
@@ -95,6 +104,10 @@ set comm_output_file [open $output_file_name a]
   puts $comm_output_file "log: Test started"
   puts $comm_output_file "sync: test started"
 close $comm_output_file
+if {$debug_mode == 1} {
+  puts "log: Test started"
+  puts "sync: test started"
+}
 
 #main loop- check link status and communicate with controlling GUI
 set continue_test "1"
@@ -126,9 +139,13 @@ while { $continue_test != "0" } {
       puts "SEU detected"
       scan $formatted_err_count %x err_count_decimal
       set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink now has $err_count_decimal SEUs"
-        puts $comm_output_file "sync: link $ilink SEU count $err_count_decimal"
+        puts $comm_output_file "log: link $ilink now has [format %u $err_count_decimal] SEUs"
+        puts $comm_output_file "sync: link $ilink SEU count [format %u $err_count_decimal]"
       close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "log: link $ilink now has $err_count_decimal SEUs"
+        puts "sync: link $ilink SEU count $err_count_decimal"
+      }
       lset seu_counters $ilink $formatted_err_count
     }
 
@@ -140,6 +157,10 @@ while { $continue_test != "0" } {
         puts $comm_output_file "log: link $ilink lost"
         puts $comm_output_file "sync: link $ilink broken"
       close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "log: link $ilink lost"
+        puts "sync: link $ilink broken"
+      }
       lset prev_link_status $ilink "NO"
     } elseif { [expr {$link_status != "NO"}] && [expr {[lindex $prev_link_status $ilink] != "LINKED"}] } {
       #link connected since last check
@@ -147,7 +168,41 @@ while { $continue_test != "0" } {
         puts $comm_output_file "log: link $ilink connected"
         puts $comm_output_file "sync: link $ilink connected"
       close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "log: link $ilink connected"
+        puts "sync: link $ilink connected"
+      }
       lset prev_link_status $ilink "LINKED"
+    }
+
+    #record link speed
+    if { $link_status != "NO" } {
+      set comm_output_file [open $output_file_name a]
+        puts $comm_output_file "sync: link $ilink status: $link_status"
+      close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "sync: link $ilink status: $link_status"
+      }
+      
+    }
+
+    #check PLL status
+    set pll0_status [parse_report [lindex $gt_commons $ilink] "QPLL0_STATUS" 3]
+    set pll1_status [parse_report [lindex $gt_commons $ilink] "QPLL1_STATUS" 3]
+    if { $pll0_status == "LOCKED" || $pll1_status == "LOCKED" } {
+      set comm_output_file [open $output_file_name a]
+        puts $comm_output_file "sync: link $ilink PLL locked"
+      close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "sync: link $ilink PLL locked"
+      }
+    } else {
+      set comm_output_file [open $output_file_name a]
+        puts $comm_output_file "sync: link $ilink PLL unlocked"
+      close $comm_output_file
+      if {$debug_mode == 1} {
+        puts "sync: link $ilink PLL unlocked"
+      }
     }
 
     #Do not auto-recover
@@ -214,6 +269,9 @@ while { $continue_test != "0" } {
     set comm_output_file [open $output_file_name a]
       puts $comm_output_file "sync: test in progress"
     close $comm_output_file
+    if {$debug_mode == 1} {
+      puts "sync: test in progress"
+    }
   }
 }
 
@@ -221,6 +279,10 @@ set comm_output_file [open $output_file_name a]
   puts $comm_output_file "log: Test stopped"
   puts $comm_output_file "sync: test stopped"
 close $comm_output_file
+if {$debug_mode == 1} {
+  puts "log: Test stopped"
+  puts "sync: test stopped"
+}
 
 close_hw
 

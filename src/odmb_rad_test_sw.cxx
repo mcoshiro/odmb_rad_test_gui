@@ -37,6 +37,12 @@ const int DIAG_ID_RESETLINKS = 11;
 const int DIAG_ID_RESETSEU = 12;
 const int DIAG_ID_LINK1SEU = 13;
 const int DIAG_ID_LINK2SEU = 14;
+const int DIAG_ID_LINK1TITLE = 15;
+const int DIAG_ID_LINK2TITLE = 16;
+const int DIAG_ID_LINK1RATE = 17;
+const int DIAG_ID_LINK2RATE = 18;
+const int DIAG_ID_LINK1PLL = 19;
+const int DIAG_ID_LINK2PLL = 20;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -89,7 +95,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"ODMB Radiation Test Software",  // Window text
       WS_OVERLAPPEDWINDOW,              // Window style
       // Size and position
-      CW_USEDEFAULT, CW_USEDEFAULT, 784, 512,
+      CW_USEDEFAULT, CW_USEDEFAULT, 784, 576,
       NULL,       // Parent window    
       NULL,       // Menu
       hInstance,  // Instance handle
@@ -180,27 +186,57 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
   //text box
   HWND hwndCommentBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"",
-      WS_CHILD | WS_VISIBLE, 16, 432, 720, 32, hwnd, (HMENU)DIAG_ID_COMMENTBOX, 
+      WS_CHILD | WS_VISIBLE, 16, 496, 720, 32, hwnd, (HMENU)DIAG_ID_COMMENTBOX, 
+      NULL, NULL);
+
+  //link title 1
+  HWND hwndLinkOneTitleBox = CreateWindowEx(WS_EX_LEFT, L"STATIC", L"Link 0",
+      WS_CHILD | WS_VISIBLE, 448, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TITLE, 
+      NULL, NULL);
+
+  //link title 2
+  HWND hwndLinkTwoTitleBox = CreateWindowEx(WS_EX_LEFT, L"STATIC", L"Link 1",
+      WS_CHILD | WS_VISIBLE, 608, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TITLE, 
       NULL, NULL);
 
   //link box 1
   HWND hwndLinkOneBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
-      WS_CHILD | WS_VISIBLE, 448, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TEXT, 
+      WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1TEXT, 
       NULL, NULL);
 
   //link box 2
   HWND hwndLinkTwoBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
-      WS_CHILD | WS_VISIBLE, 448, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
+      WS_CHILD | WS_VISIBLE, 608, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2TEXT, 
       NULL, NULL);
 
   //SEU box 1
   HWND hwndLinkOneSeuBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 SEUs",
-      WS_CHILD | WS_VISIBLE, 608, 336, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1SEU, 
+      WS_CHILD | WS_VISIBLE, 448, 400, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1SEU, 
       NULL, NULL);
 
   //SEU box 2
   HWND hwndLinkTwoSeuBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 SEUs",
-      WS_CHILD | WS_VISIBLE, 608, 368, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2SEU, 
+      WS_CHILD | WS_VISIBLE, 608, 400, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2SEU, 
+      NULL, NULL);
+
+  //link rate box 1
+  HWND hwndLinkOneRateBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 Gb/s",
+      WS_CHILD | WS_VISIBLE, 448, 432, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1RATE, 
+      NULL, NULL);
+
+  //link rate box 2
+  HWND hwndLinkTwoRateBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"0 Gb/s",
+      WS_CHILD | WS_VISIBLE, 608, 432, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2RATE, 
+      NULL, NULL);
+
+  //link PLL box 1
+  HWND hwndLinkOnePllBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
+      WS_CHILD | WS_VISIBLE, 448, 464, 144, 24, hwnd, (HMENU)DIAG_ID_LINK1PLL, 
+      NULL, NULL);
+
+  //link PLL box 2
+  HWND hwndLinkTwoPllBox = CreateWindowEx(WS_EX_CLIENTEDGE, L"STATIC", L"Test Stopped",
+      WS_CHILD | WS_VISIBLE, 608, 464, 144, 24, hwnd, (HMENU)DIAG_ID_LINK2PLL, 
       NULL, NULL);
 
   // Run the message loop.
@@ -387,6 +423,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                   link_two_bkgd = CreateSolidBrush(RGB(160,160,160));
                   SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Test Stopped");
                   SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1RATE, L"0 Gb/s");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2RATE, L"0 Gb/s");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1PLL, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2PLL, L"Test Stopped");
                 }
               }
               if (line.size() >= 19) {
@@ -395,6 +435,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                   DeleteObject( link_one_bkgd );
                   link_one_bkgd = CreateSolidBrush(RGB(255,51,51));
                   SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Link Broken");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1RATE, L"0 Gb/s");
                 }
               }
               if (line.size() >= 22) {
@@ -411,6 +452,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                   DeleteObject( link_two_bkgd );
                   link_two_bkgd = CreateSolidBrush(RGB(255,51,51));
                   SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Link Broken");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2RATE, L"0 Gb/s");
                 }
               }
               if (line.size() >= 22) {
@@ -437,6 +479,41 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                   std::wostringstream stros;
                   stros << wstr_seu_count;
                   SetDlgItemText(hwnd, DIAG_ID_LINK2SEU, stros.str().c_str());
+                }
+              }
+              if (line.size() >= 20) {
+                if (line.substr(0,20) == "sync: link 0 status:") {
+                  std::string str_seu_count = line.substr(20,line.size()) + " Gb/s";
+                  std::wstring wstr_seu_count = std::wstring(str_seu_count.begin(), str_seu_count.end());
+                  std::wostringstream stros;
+                  stros << wstr_seu_count;
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1RATE, stros.str().c_str());
+                }
+              }
+              if (line.size() >= 20) {
+                if (line.substr(0,20) == "sync: link 1 status:") {
+                  std::string str_seu_count = line.substr(20,line.size()) + " Gb/s";
+                  std::wstring wstr_seu_count = std::wstring(str_seu_count.begin(), str_seu_count.end());
+                  std::wostringstream stros;
+                  stros << wstr_seu_count;
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2RATE, stros.str().c_str());
+                }
+              }
+              if (line.size() >= 16) {
+                if (line.substr(0,16) == "sync: link 0 PLL") {
+                  std::cout << "DEBUG: '" << line.substr(17,18) << "'\n";
+                  if (line.substr(17,1) == "l") 
+                    SetDlgItemText(hwnd, DIAG_ID_LINK1PLL, L"PLL Locked");
+                  else
+                    SetDlgItemText(hwnd, DIAG_ID_LINK1PLL, L"PLL Unlocked");
+                }
+              }
+              if (line.size() >= 16) {
+                if (line.substr(0,16) == "sync: link 1 PLL") {
+                  if (line.substr(17,1) == "l") 
+                    SetDlgItemText(hwnd, DIAG_ID_LINK2PLL, L"PLL Locked");
+                  else
+                    SetDlgItemText(hwnd, DIAG_ID_LINK2PLL, L"PLL Unlocked");
                 }
               }
             }
