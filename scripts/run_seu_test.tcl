@@ -100,124 +100,128 @@ puts "links established"
 after 500
 reset_links_all $links
 set cycle_counter 0
+set test_running 0
+
 set comm_output_file [open $output_file_name a]
-  puts $comm_output_file "log: Test started"
+  puts $comm_output_file "log: Script started and firmware loaded"
   puts $comm_output_file "sync: test started"
 close $comm_output_file
 if {$debug_mode == 1} {
-  puts "log: Test started"
+  puts "log: Script started and firmware loaded"
   puts "sync: test started"
 }
 
 #main loop- check link status and communicate with controlling GUI
 set continue_test "1"
 while { $continue_test != "0" } {
-  #print 
-  puts "DEBUG: SEU test in progress"
-
   #check status on the various links
-  set nlinks [llength $links]
-  refresh_hw_sio $links
-  for {set ilink 0} {$ilink < $nlinks} {incr ilink} {
-    set link [lindex $links $ilink]
-    set seu_counter [lindex $seu_counters $ilink]
-    # record bit error rate, number of bits received, prbs pattern
-    set rx_ber [parse_report [get_hw_sio_links $link] "RX_BER" 3]
-    set link_status [parse_report [get_hw_sio_links $link] "STATUS" 3]
-    set rx_bits [parse_report [get_hw_sio_links $link] "RX_RECEIVED_BIT_COUNT" 3]
-    set err_count [parse_report [get_hw_sio_links $link] "LOGIC.ERRBIT_COUNT" 3]
-    #set RX_pattern [parse_report [get_hw_sio_links $link] "RX_PATTERN" 4]
-    
-    #write log if new SEUs
-    set formatted_err_count [string trimleft $err_count 0]
-    if { $formatted_err_count == "" } {
-      set formatted_err_count "0"
-    }
-    #puts "DEBUG: previously $seu_counter errors, now $formatted_err_count"
-    if { $formatted_err_count > $seu_counter } {
-      #new SEU since last check
-      puts "SEU detected"
-      scan $formatted_err_count %x err_count_decimal
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink now has [format %u $err_count_decimal] SEUs"
-        puts $comm_output_file "sync: link $ilink SEU count [format %u $err_count_decimal]"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "log: link $ilink now has $err_count_decimal SEUs"
-        puts "sync: link $ilink SEU count $err_count_decimal"
-      }
-      lset seu_counters $ilink $formatted_err_count
-    }
+  if {$test_running == 1} {
+    #print 
+    puts "DEBUG: SEU test in progress"
 
-    #write log if link broken or recovered
-    puts "DEBUG: link $ilink status: $link_status"
-    if { [expr {$link_status == "NO"}] && [expr {[lindex $prev_link_status $ilink] != "NO"}] } {
-      #link lost since last check
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink lost"
-        puts $comm_output_file "sync: link $ilink broken"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "log: link $ilink lost"
-        puts "sync: link $ilink broken"
-      }
-      lset prev_link_status $ilink "NO"
-    } elseif { [expr {$link_status != "NO"}] && [expr {[lindex $prev_link_status $ilink] != "LINKED"}] } {
-      #link connected since last check
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "log: link $ilink connected"
-        puts $comm_output_file "sync: link $ilink connected"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "log: link $ilink connected"
-        puts "sync: link $ilink connected"
-      }
-      lset prev_link_status $ilink "LINKED"
-    }
-
-    #record link speed
-    if { $link_status != "NO" } {
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "sync: link $ilink status: $link_status"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "sync: link $ilink status: $link_status"
-      }
+    set nlinks [llength $links]
+    refresh_hw_sio $links
+    for {set ilink 0} {$ilink < $nlinks} {incr ilink} {
+      set link [lindex $links $ilink]
+      set seu_counter [lindex $seu_counters $ilink]
+      # record bit error rate, number of bits received, prbs pattern
+      set rx_ber [parse_report [get_hw_sio_links $link] "RX_BER" 3]
+      set link_status [parse_report [get_hw_sio_links $link] "STATUS" 3]
+      set rx_bits [parse_report [get_hw_sio_links $link] "RX_RECEIVED_BIT_COUNT" 3]
+      set err_count [parse_report [get_hw_sio_links $link] "LOGIC.ERRBIT_COUNT" 3]
+      #set RX_pattern [parse_report [get_hw_sio_links $link] "RX_PATTERN" 4]
       
-    }
-
-    #check PLL status
-    set pll0_status [parse_report [lindex $gt_commons $ilink] "QPLL0_STATUS" 3]
-    set pll1_status [parse_report [lindex $gt_commons $ilink] "QPLL1_STATUS" 3]
-    if { $pll0_status == "LOCKED" || $pll1_status == "LOCKED" } {
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "sync: link $ilink PLL locked"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "sync: link $ilink PLL locked"
+      #write log if new SEUs
+      set formatted_err_count [string trimleft $err_count 0]
+      if { $formatted_err_count == "" } {
+        set formatted_err_count "0"
       }
-    } else {
-      set comm_output_file [open $output_file_name a]
-        puts $comm_output_file "sync: link $ilink PLL unlocked"
-      close $comm_output_file
-      if {$debug_mode == 1} {
-        puts "sync: link $ilink PLL unlocked"
+      #puts "DEBUG: previously $seu_counter errors, now $formatted_err_count"
+      if { $formatted_err_count > $seu_counter } {
+        #new SEU since last check
+        puts "SEU detected"
+        scan $formatted_err_count %x err_count_decimal
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "log: Link $ilink now has [format %u $err_count_decimal] SEUs"
+          puts $comm_output_file "sync: link $ilink SEU count [format %u $err_count_decimal]"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "log: Link $ilink now has $err_count_decimal SEUs"
+          puts "sync: link $ilink SEU count $err_count_decimal"
+        }
+        lset seu_counters $ilink $formatted_err_count
       }
-    }
 
-    #Do not auto-recover
-    #if link is broken, try to reset TX/RX
-    #if { [expr {$link_status == "NO"}] } {
-    #  puts "DEBUG: Attemptign to reset TX/RX"
-    #  set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $link]
-    #  set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $link]
-    #  commit_hw_sio [get_hw_sio_links $link]
-    #  after 200
-    #  set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $link]
-    #  set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $link]
-    #  commit_hw_sio [get_hw_sio_links $link]
-    #}
-  #end loop over links
+      #write log if link broken or recovered
+      puts "DEBUG: link $ilink status: $link_status"
+      if { [expr {$link_status == "NO"}] && [expr {[lindex $prev_link_status $ilink] != "NO"}] } {
+        #link lost since last check
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "log: Link $ilink lost"
+          puts $comm_output_file "sync: link $ilink broken"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "log: Link $ilink lost"
+          puts "sync: link $ilink broken"
+        }
+        lset prev_link_status $ilink "NO"
+      } elseif { [expr {$link_status != "NO"}] && [expr {[lindex $prev_link_status $ilink] != "LINKED"}] } {
+        #link connected since last check
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "log: link $ilink connected"
+          puts $comm_output_file "sync: link $ilink connected"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "log: link $ilink connected"
+          puts "sync: link $ilink connected"
+        }
+        lset prev_link_status $ilink "LINKED"
+      }
+
+      #record link speed
+      if { $link_status != "NO" } {
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "sync: link $ilink status: $link_status"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "sync: link $ilink status: $link_status"
+        }
+        
+      }
+
+      #check PLL status
+      set pll0_status [parse_report [lindex $gt_commons $ilink] "QPLL0_STATUS" 3]
+      set pll1_status [parse_report [lindex $gt_commons $ilink] "QPLL1_STATUS" 3]
+      if { $pll0_status == "LOCKED" || $pll1_status == "LOCKED" } {
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "sync: link $ilink PLL locked"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "sync: link $ilink PLL locked"
+        }
+      } else {
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "sync: link $ilink PLL unlocked"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "sync: link $ilink PLL unlocked"
+        }
+      }
+
+      #Do not auto-recover
+      #if link is broken, try to reset TX/RX
+      #if { [expr {$link_status == "NO"}] } {
+      #  puts "DEBUG: Attemptign to reset TX/RX"
+      #  set_property LOGIC.TX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+      #  set_property LOGIC.RX_RESET_DATAPATH 1 [get_hw_sio_links $link]
+      #  commit_hw_sio [get_hw_sio_links $link]
+      #  after 200
+      #  set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+      #  set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $link]
+      #  commit_hw_sio [get_hw_sio_links $link]
+      #}
+    #end loop over links
+    }
   }
 
   #check for communication from GUI
@@ -228,6 +232,26 @@ while { $continue_test != "0" } {
       if { $input_data == "cmd: stop" } {
         puts "Stopping test"
         set continue_test "0"
+      } elseif { $input_data == "cmd: start" } {
+        set test_running 1
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "log: Test started"
+          puts $comm_output_file "sync: test unpaused"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "log: Test started"
+          puts "sync: test unpaused"
+        }
+      } elseif { $input_data == "cmd: pause" } {
+        set test_running 0
+        set comm_output_file [open $output_file_name a]
+          puts $comm_output_file "log: Test stopped"
+          puts $comm_output_file "sync: test paused"
+        close $comm_output_file
+        if {$debug_mode == 1} {
+          puts "log: Test stopped"
+          puts "sync: test paused"
+        }
       } elseif { $input_data == "cmd: inject error" } {
         puts "Injecting error"
         set_property LOGIC.ERR_INJECT_CTRL 1 [get_hw_sio_links $links]
@@ -276,11 +300,11 @@ while { $continue_test != "0" } {
 }
 
 set comm_output_file [open $output_file_name a]
-  puts $comm_output_file "log: Test stopped"
+  puts $comm_output_file "log: Script stopped"
   puts $comm_output_file "sync: test stopped"
 close $comm_output_file
 if {$debug_mode == 1} {
-  puts "log: Test stopped"
+  puts "log: Script stopped"
   puts "sync: test stopped"
 }
 

@@ -43,6 +43,8 @@ const int DIAG_ID_LINK1RATE = 17;
 const int DIAG_ID_LINK2RATE = 18;
 const int DIAG_ID_LINK1PLL = 19;
 const int DIAG_ID_LINK2PLL = 20;
+const int DIAG_ID_STARTTESTREAL = 21;
+const int DIAG_ID_STOPTESTREAL = 22;
 
 const int TIMER_ID_CHECKFILES = 0;
 
@@ -50,8 +52,8 @@ const int DISPLAY_LOG_LENGTH = 16;
 
 //funcion forward declarations (TODO: move to header?)
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-void update_log(std::vector<std::wstring> & display_log, std::string new_text, std::ofstream *logfile);
-void update_log(std::vector<std::wstring> & display_log, std::wstring new_text, std::ofstream *logfile);
+void update_log(std::vector<std::wstring> & display_log, std::string new_text, std::ofstream *log_file, std::ofstream *test_log_file);
+void update_log(std::vector<std::wstring> & display_log, std::wstring new_text, std::ofstream *log_file, std::ofstream *test_log_file);
 void post_string_vector_to_dialog_text(HWND hwnd, int dialog_id, std::vector<std::wstring> & display_log);
 std::string asctime_to_filetime(std::string asctime);
 //std::wstring convert_to_log(std::string text);
@@ -69,10 +71,12 @@ struct StateInfo {
   int link1_seu_counter;
   int link2_seu_counter;
   int cycles_since_comm_counter;
-  bool test_is_initiated;
-  bool test_is_running;
+  bool test_is_initiated; //indicates load FW button pressed
+  bool test_is_running; //indicates FW loaded
+  bool test_is_ready; //indicates start test button pressed
   std::vector<std::wstring> display_log;
   std::ofstream *log_file;
+  std::ofstream *test_log_file;
 };
 
 //main function
@@ -113,7 +117,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
   HWND hwndStartButton = CreateWindowEx(
       0,          // Optional Style
       L"BUTTON",  // Predefined class; Unicode assumed
-      L"Start SEU Test",   // Button text
+      L"Launch Script",   // Button text
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,  // Styles
       16,         // x position
       336,         // y position
@@ -144,7 +148,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
   //button to stop
   HWND hwndStopButton = CreateWindowEx(0, L"BUTTON", 
-      L"Stop SEU Test", 
+      L"Stop Script", 
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 336, 128, 
       24, hwnd, (HMENU)DIAG_ID_STOPBUTTON, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
@@ -182,6 +186,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
       L"Reset SEUs", 
       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 16, 400, 128, 
       24, hwnd, (HMENU)DIAG_ID_RESETSEU, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to start SEU test
+  HWND hwndStartTestRealButton = CreateWindowEx(0, L"BUTTON", 
+      L"Start SEU Test", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 160, 400, 128, 
+      24, hwnd, (HMENU)DIAG_ID_STARTTESTREAL, 
+      (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
+
+  //button to stop SEU test
+  HWND hwndStopTestRealButton = CreateWindowEx(0, L"BUTTON", 
+      L"Stop SEU Test", 
+      WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 304, 400, 128, 
+      24, hwnd, (HMENU)DIAG_ID_STOPTESTREAL, 
       (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), NULL);
 
   //text box
@@ -268,13 +286,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       AppState->cycles_since_comm_counter = 0;
       AppState->test_is_initiated = false;
       AppState->test_is_running = false;
+      AppState->test_is_ready = false;
       AppState->link_one = LinkStatus::test_stopped;
       AppState->link_two = LinkStatus::test_stopped;
       AppState->display_log = std::vector<std::wstring>(DISPLAY_LOG_LENGTH,L"");
       std::time_t current_time = std::time(nullptr);
       char* time_cstr = std::asctime(std::localtime(&current_time));
       std::string time_string = asctime_to_filetime(std::string(time_cstr));
-      AppState->log_file = new std::ofstream(("logs\\radtest_"+time_string+".log").c_str());
+      AppState->log_file = new std::ofstream(("logs\\radsession_"+time_string+".log").c_str());
+      AppState->test_log_file = nullptr;
       SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)AppState);
 
       //initialize static variables in WindowProc
@@ -313,6 +333,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       //close log file
       AppState->log_file->close();
       delete AppState->log_file;
+      if (AppState->test_log_file != nullptr) {
+        AppState->test_log_file->close();
+        delete AppState->test_log_file;
+      }
       DeleteObject( link_one_bkgd );
       DeleteObject( link_two_bkgd );
       PostQuitMessage(0);
@@ -404,7 +428,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 if (line.substr(0,5) == "log: ") {
                   //add info to log
                   std::string log_line = line.substr(5,line.size()-5);
-                  update_log(AppState->display_log, log_line, AppState->log_file);
+                  update_log(AppState->display_log, log_line, AppState->log_file, AppState->test_log_file);
                 }
               }
               if (line.size() >= 18) {
@@ -415,6 +439,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               if (line.size() >= 18) {
                 if (line.substr(0,18) == "sync: test stopped") {
                   AppState->test_is_running = false;
+                  AppState->link_one = LinkStatus::test_stopped;
+                  AppState->link_two = LinkStatus::test_stopped;
+                  DeleteObject( link_one_bkgd );
+                  DeleteObject( link_two_bkgd );
+                  link_one_bkgd = CreateSolidBrush(RGB(160,160,160));
+                  link_two_bkgd = CreateSolidBrush(RGB(160,160,160));
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1TEXT, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2TEXT, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1RATE, L"0 Gb/s");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2RATE, L"0 Gb/s");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK1PLL, L"Test Stopped");
+                  SetDlgItemText(hwnd, DIAG_ID_LINK2PLL, L"Test Stopped");
+                }
+              }
+              if (line.size() >= 17) {
+                if (line.substr(0,17) == "sync: test paused") {
+                  AppState->test_is_ready = false;
                   AppState->link_one = LinkStatus::test_stopped;
                   AppState->link_two = LinkStatus::test_stopped;
                   DeleteObject( link_one_bkgd );
@@ -501,7 +542,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               }
               if (line.size() >= 16) {
                 if (line.substr(0,16) == "sync: link 0 PLL") {
-                  std::cout << "DEBUG: '" << line.substr(17,18) << "'\n";
                   if (line.substr(17,1) == "l") 
                     SetDlgItemText(hwnd, DIAG_ID_LINK1PLL, L"PLL Locked");
                   else
@@ -522,7 +562,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             tcl_comm_file.close();
             remove("comm_files\\tcl_comm_out.txt");
           }
-          else if (AppState->test_is_running == true) {
+          else if (AppState->test_is_ready == true) {
             AppState->cycles_since_comm_counter += 1;
           }
           if (AppState->cycles_since_comm_counter == 4) {
@@ -559,14 +599,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             //warning, test already running
             update_log(AppState->display_log, 
                 std::wstring(L"Error: cannot start test since test already initiated"), 
-                AppState->log_file);
+                AppState->log_file, AppState->test_log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
           }
           else {
             //system("start C:\\cygwin64\\bin\\python3.6m.exe scripts\\dummy_python_script.py && exit");
-            system("start c:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl && exit");
+            //system("start C:\\Xilinx\\Vivado\\2019.2\\bin\\vivado -nojournal -nolog -mode batch -notrace -source scripts\\run_seu_test.tcl && exit");
+            system("start scripts\\run_vivado.bat");
             AppState->test_is_initiated = true;
-            update_log(AppState->display_log, std::wstring(L"Initiating SEU test"), AppState->log_file);
+            update_log(AppState->display_log, std::wstring(L"Starting script and loading firmware, please wait"), AppState->log_file, AppState->test_log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             //Keep GUI window on top: TODO doesn't work, not important enough to fix now
             RECT win_rect;
@@ -583,16 +624,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (!AppState->test_is_running) {
               //warning, no running test
               update_log(AppState->display_log, 
-                  std::wstring(L"Warning: attempting to stop, but no known running process"), 
-                  AppState->log_file);
+                  std::wstring(L"Warning: attempting to stop script, but no known running process"), 
+                  AppState->log_file, AppState->test_log_file);
               post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             }
             std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
             if (tcl_comm_check_file.good()) {
               //error, unread communication to Vivado already exists
               update_log(AppState->display_log, 
-                  std::wstring(L"Error: attempted to stop but previous command unresponsive"), 
-                  AppState->log_file);
+                  std::wstring(L"Error: attempted to stop script but previous command unresponsive"), 
+                  AppState->log_file, AppState->test_log_file);
               post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             }
             else {
@@ -601,16 +642,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
               tcl_comm_file.close();
             }
             AppState->test_is_initiated = false;
+            AppState->test_is_running = false;
+            AppState->test_is_ready = false;
           }
           break;
 
         case DIAG_ID_INJECTERROR:
           {
-            if (!AppState->test_is_running) {
+            if (!AppState->test_is_ready) {
               //warning, no running test
               update_log(AppState->display_log, 
-                  std::wstring(L"Error: attempting to inject error, but no known running process"), 
-                  AppState->log_file);
+                  std::wstring(L"Error: no running test to inject errors"), 
+                  AppState->log_file, AppState->test_log_file);
               post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             }
             else {
@@ -619,7 +662,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 //error, unread communication to Vivado already exists
                 update_log(AppState->display_log, 
                     std::wstring(L"Error: attempted to inject error but previous command unresponsive"), 
-                    AppState->log_file);
+                    AppState->log_file, AppState->test_log_file);
                 post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
               }
               else {
@@ -633,11 +676,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         case DIAG_ID_RESETLINKS:
           {
-            if (!AppState->test_is_running) {
+            if (!AppState->test_is_ready) {
               //warning, no running test
               update_log(AppState->display_log, 
-                  std::wstring(L"Error: no running process to reset links"), 
-                  AppState->log_file);
+                  std::wstring(L"Error: no running test to reset links"), 
+                  AppState->log_file, AppState->test_log_file);
               post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             }
             else {
@@ -646,13 +689,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 //error, unread communication to Vivado already exists
                 update_log(AppState->display_log, 
                     std::wstring(L"Error: attempted to reset links but previous command unresponsive"), 
-                    AppState->log_file);
+                    AppState->log_file, AppState->test_log_file);
                 post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
               }
               else {
                 update_log(AppState->display_log, 
                     std::wstring(L"User reset links"), 
-                    AppState->log_file);
+                    AppState->log_file, AppState->test_log_file);
                 std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
                 tcl_comm_file << "cmd: reset links\n";
                 tcl_comm_file.close();
@@ -663,11 +706,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         case DIAG_ID_RESETSEU:
           {
-            if (!AppState->test_is_running) {
+            if (!AppState->test_is_ready) {
               //warning, no running test
               update_log(AppState->display_log, 
-                  std::wstring(L"Error: no running process to reset SEUs"), 
-                  AppState->log_file);
+                  std::wstring(L"Error: no running test to reset SEUs"), 
+                  AppState->log_file, AppState->test_log_file);
               post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             }
             else {
@@ -676,13 +719,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 //error, unread communication to Vivado already exists
                 update_log(AppState->display_log, 
                     std::wstring(L"Error: attempted to reset SEUs but previous command unresponsive"), 
-                    AppState->log_file);
+                    AppState->log_file, AppState->test_log_file);
                 post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
               }
               else {
                 update_log(AppState->display_log, 
                     std::wstring(L"User reset SEUs"), 
-                    AppState->log_file);
+                    AppState->log_file, AppState->test_log_file);
                 std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
                 tcl_comm_file << "cmd: reset seus\n";
                 tcl_comm_file.close();
@@ -693,11 +736,89 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
           }
           break;
 
+        case DIAG_ID_STARTTESTREAL:
+          {
+            if (!AppState->test_is_running) {
+              //warning, no running test
+              update_log(AppState->display_log, 
+                  std::wstring(L"Error: please load FW before starting test."), 
+                  AppState->log_file, AppState->test_log_file);
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+            std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, 
+                    std::wstring(L"Error: attempted to start test but previous command unresponsive."), 
+                    AppState->log_file, AppState->test_log_file);
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
+                tcl_comm_file << "cmd: reset links\n";
+                tcl_comm_file << "cmd: reset seus\n";
+                tcl_comm_file << "cmd: start\n";
+                tcl_comm_file.close();
+                std::time_t current_time = std::time(nullptr);
+                char* time_cstr = std::asctime(std::localtime(&current_time));
+                std::string time_string = asctime_to_filetime(std::string(time_cstr));
+                AppState->test_log_file = new std::ofstream(("logs\\radtest_"+time_string+".log").c_str());
+                SetDlgItemText(hwnd, DIAG_ID_LINK1SEU, L"0 SEUs");
+                SetDlgItemText(hwnd, DIAG_ID_LINK2SEU, L"0 SEUs");
+                AppState->test_is_ready = true;
+                update_log(AppState->display_log, 
+                    std::wstring(L"Starting test"), 
+                    AppState->log_file, AppState->test_log_file);
+              }
+            }
+          }
+          break;
+
+        case DIAG_ID_STOPTESTREAL:
+          {
+            if (!AppState->test_is_ready) {
+              //warning, no running test
+              update_log(AppState->display_log, 
+                  std::wstring(L"Error: no running test to stop"), 
+                  AppState->log_file, AppState->test_log_file);
+              post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+            }
+            else {
+            std::ifstream tcl_comm_check_file("comm_files\\tcl_comm_in.txt");
+              if (tcl_comm_check_file.good()) {
+                //error, unread communication to Vivado already exists
+                update_log(AppState->display_log, 
+                    std::wstring(L"Error: attempted to stop test but previous command unresponsive."), 
+                    AppState->log_file, AppState->test_log_file);
+                post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
+              }
+              else {
+                update_log(AppState->display_log, 
+                    std::wstring(L"Stopping test"), 
+                    AppState->log_file, AppState->test_log_file);
+                std::ofstream tcl_comm_file("comm_files\\tcl_comm_in.txt");
+                tcl_comm_file << "cmd: pause\n";
+                tcl_comm_file.close();
+                AppState->test_is_ready = false;
+                if (AppState->test_log_file != nullptr) {
+                  AppState->test_log_file->close();
+                  delete AppState->test_log_file;
+                  AppState->test_log_file = nullptr;
+                }
+                else {
+                  std::cout << "ERROR: test was ready but test_log_file was nullptr";
+                }
+              }
+            }
+          }
+          break;
+
         case DIAG_ID_WRITE_COMMENT:
           {
             wchar_t diag_comment_text[256];
             GetDlgItemText(hwnd, DIAG_ID_COMMENTBOX, diag_comment_text, 256);
-            update_log(AppState->display_log, std::wstring(diag_comment_text), AppState->log_file);
+            update_log(AppState->display_log, std::wstring(diag_comment_text), AppState->log_file, AppState->test_log_file);
             post_string_vector_to_dialog_text(hwnd, DIAG_ID_LOGTEXT, AppState->display_log);
             SetDlgItemText(hwnd, DIAG_ID_COMMENTBOX, L"");
           }
@@ -766,7 +887,7 @@ void post_string_vector_to_dialog_text(HWND hwnd, int dialog_id,
 /**
  * function that updates vector display_log with new time-stampped text from new_text
  */
-void update_log(std::vector<std::wstring> & display_log, std::string new_text, std::ofstream *log_file) {
+void update_log(std::vector<std::wstring> & display_log, std::string new_text, std::ofstream *log_file, std::ofstream *test_log_file) {
   //update log with new comment
   for (unsigned log_idx = 0; log_idx < (DISPLAY_LOG_LENGTH-1); log_idx++) {
     display_log[log_idx] = display_log[log_idx+1];
@@ -778,12 +899,15 @@ void update_log(std::vector<std::wstring> & display_log, std::string new_text, s
   std::string new_log = time_string + ": " + new_text;
   display_log[DISPLAY_LOG_LENGTH-1] = std::wstring(new_log.begin(), new_log.end());
   (*log_file) << new_log << "\n";
+  if (test_log_file != nullptr) {
+    (*test_log_file) << new_log << "\n";
+  }
 }
 
 /**
  * function that updates vector display_log with new time-stampped text from new_text
  */
-void update_log(std::vector<std::wstring> & display_log, std::wstring new_text, std::ofstream *log_file) {
+void update_log(std::vector<std::wstring> & display_log, std::wstring new_text, std::ofstream *log_file, std::ofstream *test_log_file) {
   //update log with new comment
   for (unsigned log_idx = 0; log_idx < (DISPLAY_LOG_LENGTH-1); log_idx++) {
     display_log[log_idx] = display_log[log_idx+1];
@@ -797,4 +921,8 @@ void update_log(std::vector<std::wstring> & display_log, std::wstring new_text, 
       std::wstring(time_string.begin(), time_string.end()) + L": " + new_text;
   (*log_file) << std::string(display_log[DISPLAY_LOG_LENGTH-1].begin(), 
       display_log[DISPLAY_LOG_LENGTH-1].end()) << "\n";
+  if (test_log_file != nullptr) {
+    (*test_log_file) << std::string(display_log[DISPLAY_LOG_LENGTH-1].begin(), 
+        display_log[DISPLAY_LOG_LENGTH-1].end()) << "\n";
+  }
 }
