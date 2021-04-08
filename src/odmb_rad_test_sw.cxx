@@ -644,6 +644,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             AppState->test_is_initiated = false;
             AppState->test_is_running = false;
             AppState->test_is_ready = false;
+            if (AppState->test_log_file != nullptr) {
+              AppState->test_log_file->close();
+              delete AppState->test_log_file;
+              AppState->test_log_file = nullptr;
+            }
           }
           break;
 

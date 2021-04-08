@@ -268,6 +268,8 @@ while { $continue_test != "0" } {
         set_property LOGIC.TX_RESET_DATAPATH 0 [get_hw_sio_links $links]
         set_property LOGIC.RX_RESET_DATAPATH 0 [get_hw_sio_links $links]
         commit_hw_sio [get_hw_sio_links $links]
+        lset prev_link_status 0 "UNKNOWN"
+        lset prev_link_status 1 "UNKNOWN"
       } elseif { $input_data == "cmd: reset seus" } {
         puts "Resetting SEUs"
         set_property LOGIC.MGT_ERRCNT_RESET_CTRL 1 [get_hw_sio_links $links]
